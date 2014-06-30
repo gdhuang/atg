@@ -1,0 +1,287 @@
+#!/usr/bin/env node
+
+'use strict';
+var fs = require('fs'),
+    path = require('path'),
+    util = require('util'),
+    assert = require('assert'),
+    esprima = require('esprima'),
+    esmorph = require('esmorph'),
+    escodegen = require('escodegen'),
+    beautify = require('js-beautify').js_beautify,
+    readdirp = require('readdirp'),
+    dust = require('dustjs-linkedin'),
+    ast = require(__dirname+'/../lib/ast'),
+    visitor = require(__dirname+'/../lib/visitor'),
+    cfg = require(__dirname+'/../lib/cfg'),
+    rt = require(__dirname+'/../bin/runtime'),
+    config = require('config'),
+    log4js = require('log4js'),
+    logger = log4js.getLogger("app.js");
+    
+log4js.configure(config.log4js);
+
+var DIRECTIVE = {INSTRUMENTED: 'instrumented for generating unit test',
+                 KEY: 'allen',
+                 CALLBACK: 'callback',
+                 INPUT: 'input',
+                 OUTPUT: 'output'};
+
+var ORIGEXT = '.orig';
+
+
+function getAnnotation(funNode, directive) {
+    var comments = ast.getLeadingComments(funNode),
+        re = new RegExp('.*'+DIRECTIVE.KEY+'.*'+directive+'\\s*:\\s*(\\w[\\w\\s]*).*[,]*.*'),
+        cb,
+        annotation = '';
+
+    for(var i=0; i<comments.length; i++) {
+        cb = re.exec(comments[i].value);
+        if(cb!=null) {
+            annotation = cb[1];
+        }
+    }
+    
+
+    return annotation.trim().split(/\b\s+/);
+}
+
+function collectVarNames(funNode) {
+    var vars;
+    
+    vars = visitor.collect([esprima.Syntax.Identifier], funNode);
+    vars = vars.map(function(n) { return n.name });
+    
+    return vars;
+}
+
+
+
+
+function collectFunctions(tree) {
+    var funList = visitor.collect([esprima.Syntax.FunctionDeclaration, esprima.Syntax.FunctionExpression], tree);
+    
+    funList = funList.filter(function(funNode) { 
+        var comments = ast.getLeadingComments(funNode);
+
+        for(var i=0; i<comments.length; i++) {
+            if(comments[i].value.trim().indexOf(DIRECTIVE.KEY)==0) {
+                return true;
+            }
+        }
+        return false;
+    });
+        
+    return funList;
+}
+
+
+function instrumentHeader(tree) {
+    var relative,
+        stmt,
+        newStmts = [];
+
+    assert.ok(tree.filename);
+
+    
+    if(!tree.leadingComments)
+        tree.leadingComments = [];
+    tree.leadingComments.splice(0, 0, ast.mkComment(DIRECTIVE.INSTRUMENTED));
+
+    //var atg = require(atg)
+    stmt = ast.cStmt(util.format("var %s = require('%s')", rt.VNAME, rt.VNAME));
+    newStmts.push(stmt);
+
+    //var FILEPATH = 'tests/runtime-test.js';
+    relative = path.relative(targetDir, tree.filename);
+    stmt = ast.cStmt(util.format("var %s = '%s'", rt.FILEVAR, relative));
+    newStmts.push(stmt);
+
+    ast.insertBefore(ast.getEntry(tree), newStmts);
+    
+    return tree;
+}
+
+function instrumentInput(funNode) {
+    var vars,
+        stmt,
+        newStmts = [],
+        funName = funNode.id ? funNode.id.name : funNode.parent.id.name;
+
+
+    vars = funNode.params.map(function(n) { return n.name; });
+
+    /*vars = getAnnotation(funNode, DIRECTIVE.INPUT);
+    if(vars == null) {
+        vars = collectVarNames(funNode);
+    }*/
+
+    //var F4_13 = atg.genUUID();
+    stmt = ast.cStmt(util.format("var %s = %s()", rt.UUIDVAR, rt.UUIDFUN));
+    newStmts.push(stmt);
+
+    //atg.setup(F4_13, FILEPATH, 'funexp');
+    stmt = ast.cStmt(util.format("%s(%s,%s,'%s')", rt.SETUPFUN, rt.UUIDVAR, rt.FILEVAR, funName));
+    newStmts.push(stmt);
+
+    vars.forEach(function(v) {
+        //atg.dIn(F4_13, 'arguments', 'a', a);
+        stmt = ast.cStmt(util.format("%s(%s,'%s','%s',%s)", rt.INDUMPFUN, rt.UUIDVAR, rt.ARGUMENTS, v, v));
+        newStmts.push(stmt);
+    });
+
+    ast.insertBefore(ast.getEntry(funNode), newStmts);
+
+}
+
+function renderArguments(call) {
+    var compiled,
+        code;
+
+    compiled = dust.compile("{#arguments}{name}{@sep}, {/sep}{/arguments}", "template"),
+    dust.loadSource(compiled);
+    dust.render("template", call, function(err, out) {
+        code = out;
+    });
+    return code;
+}
+
+function instrumentCallback(funNode) {
+    var callbacks,
+        calls;
+
+    callbacks = getAnnotation(funNode, DIRECTIVE.CALLBACK);
+    if(callbacks.length == 0)
+        return;
+
+    calls = visitor.collect([esprima.Syntax.CallExpression], funNode, {skipInnerFunction: true});
+    calls.forEach(function(call) {
+        var code,
+            stmt,
+            newStmts = [];
+
+        //todo: handle member expresion
+        if(callbacks.indexOf(call.callee.name)==-1)
+            return;
+        
+        //atg.dCb(F4_13, 'cb', args...)
+        code = ast.cStmt(util.format("%s(%s,'%s',%s)", rt.CBDUMPFUN, rt.UUIDVAR, call.callee.name, renderArguments(call)));
+        stmt = ast.cStmt(code);
+        newStmts.push(stmt);
+
+        //atg.genTest(F4_13)
+        stmt = ast.cStmt(util.format('%s(%s)', rt.GENTESTFUN, rt.UUIDVAR));
+        newStmts.push(stmt);
+        ast.insertBefore(call, newStmts);
+    });
+}
+
+function instrumentReturn(funNode) {
+    var rets;
+
+    rets = visitor.collect([esprima.Syntax.ReturnStatement], funNode, {skipInnerFunction: true});
+
+    rets.map(function(ret) {
+        var result,
+            stmt,
+            newStmts = [];
+
+        assert.ok(ret.argument.type === esprima.Syntax.Identifier ||
+                  ret.argument.type === esprima.Syntax.Literal);
+
+        result = ast.dump(ret.argument);
+
+        //atg.dOut(F4_13, 'return', 'res', res)
+        stmt = ast.cStmt(util.format("%s(%s,'%s','%s',%s)", rt.OUTDUMPFUN, rt.UUIDVAR, rt.RETURN, result, result));
+        newStmts.push(stmt);
+
+        //atg.genTest(F4_13)
+        stmt = ast.cStmt(util.format('%s(%s)', rt.GENTESTFUN, rt.UUIDVAR));
+        newStmts.push(stmt);
+        ast.insertBefore(ret, newStmts);
+    });
+}
+
+function instrumentOutput(funNode) {
+    instrumentCallback(funNode);
+    instrumentReturn(funNode);    
+}
+
+
+function replaceFile(filePath, content) {
+    var backupFilePath = path.join(path.dirname(filePath), path.basename(filePath)+ORIGEXT),
+        tmpFilePath = path.join(path.dirname(filePath), path.basename(filePath)+'.tmp'),
+        fd = fs.openSync(tmpFilePath, 'w');
+         
+    fs.writeSync(fd, content);
+    fs.renameSync(filePath, backupFilePath);
+    fs.renameSync(tmpFilePath, filePath);
+}
+
+var doRevert = false;
+var targetDir;
+var args = process.argv.slice(2).forEach(function(a) {
+    if(a == '-r')
+        doRevert = true;
+    else if(a.indexOf('-') == -1)
+        targetDir = a;
+});
+
+
+if(doRevert) {
+    readdirp({ root: targetDir, fileFilter: '*'+ORIGEXT, directoryFilter: ['!node_modules', '!build'] }, function (err, res) { 
+        res.files.forEach(function(e) {
+            var filePath = e.fullPath,
+                jsFilePath = path.join(path.dirname(filePath), path.basename(filePath, ORIGEXT)),
+                instrumentedFilePath = jsFilePath+'.inst';
+
+            fs.renameSync(jsFilePath, instrumentedFilePath);
+            fs.renameSync(filePath, jsFilePath);
+
+        });
+    });
+
+    return;
+}
+
+
+readdirp({ root: targetDir, fileFilter: '*.js', directoryFilter: ['!node_modules', '!build'] }, function (err, res) {    
+    res.files.forEach(function(e) {
+        var filePath = e.fullPath,
+            funList,
+            tree,
+            code,
+            comments;
+        
+            logger.info('reading '+filePath);
+
+            tree = ast.parse(filePath);
+            comments = ast.getLeadingComments(tree);
+            for(var i in comments) {
+                if(comments[i].value.indexOf(DIRECTIVE.INSTRUMENTED)!==-1)
+                    return;
+            }
+            
+            if(collectFunctions(tree).length==0)
+                return;
+            
+            logger.info('instrumenting '+filePath);
+            cfg.simplifySubExp(tree);
+            instrumentHeader(tree);
+            funList = collectFunctions(tree);
+            funList.map(instrumentInput);
+            funList.map(instrumentOutput);
+
+            code = beautify(ast.dump(tree), { indent_size: 4 });
+
+            replaceFile(filePath, code);
+            logger.debug(code);    
+
+    });
+    
+    
+});
+
+    
+    

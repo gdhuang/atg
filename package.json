@@ -1,0 +1,37 @@
+{
+    "name": "atg",
+    "description": "",
+    "version": "0.1.0",
+    "author": "gdhuang",
+
+    "bin": {
+        "atg": "./bin/atg"
+    },
+    "main": "./index",
+
+    "scripts": {
+        "test": "mocha tests/* --reporter spec; mocha tests/unit/* --reporter spec",
+        "pretest" : "rm -rf ./tests/unit; /usr/bin/env node ./bin/atg ~/Documents/atg/; node ./demo/driver.js; /usr/bin/env node ./bin/atg -r ~/Documents/atg/"
+    },
+  
+    "dependencies": {
+        "log4js": "*",
+        "config": "*",
+        "esprima": "*",
+        "esmorph": "*",
+        "escodegen": "*",
+        "uglify-js": "*",
+        "js-beautify": "*",
+        "randomstring": "*",
+        "dustjs-linkedin": "*",
+        "dustjs-helpers": "*",
+        "graphviz": "*",
+        "readdirp": "*",
+        "mkdirp": "*"
+    },
+    
+    "devDependencies": {
+        "mocha": "*",
+        "chai": "*"
+    }
+}

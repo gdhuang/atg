@@ -1,0 +1,39 @@
+'use strict';
+
+var expect = require('chai').expect,
+    sut = require('{filePath}');
+
+describe('{fileName}', function(){
+
+    before(function () {
+    });
+    
+    after(function() {
+    });
+    
+    it('{funName}', function() {
+        {#arguments}
+          {?value}
+            var {name} = {value|s};
+          {:else}
+            var {name};
+          {/value}
+          
+        {/arguments}
+
+        {#callback}
+            var {name} = function() {
+                {#arguments}
+                    expect(arguments[{$idx}]).equals({.|s});
+                {/arguments}
+            };
+        {/callback}
+
+        var result = sut.{funName}({#arguments}{name}{@sep}, {/sep}{/arguments});
+        
+        {#return}
+            expect(result).equals({return|s});
+        {/return}
+    });
+    
+})

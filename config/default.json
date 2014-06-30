@@ -1,0 +1,9 @@
+{
+  "log4js":
+{
+  "level": "debug",
+  "appenders": [
+    { "type": "console"}
+  ]
+}    
+}
