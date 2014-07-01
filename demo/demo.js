@@ -15,8 +15,9 @@ var funexp = function(a, b) {
 /* allen callback:cb */
 function funAsync(a, cb) {
     var result = {data: a+1};
+    var msg = "success";
 
-    cb(result);
+    cb(msg, result);
 };
 
 

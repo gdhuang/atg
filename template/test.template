@@ -1,6 +1,6 @@
 'use strict';
 
-var expect = require('chai').expect,
+var sinon = require('sinon'),
     sut = require('{filePath}');
 
 describe('{fileName}', function(){
@@ -22,18 +22,18 @@ describe('{fileName}', function(){
         {/arguments}
 
         {#callback}
-            var {name} = function() {
-                {#arguments}
-                    expect(arguments[{$idx}]).equals({.|s});
-                {/arguments}
-            };
+            var {name} = sinon.stub();
         {/callback}
 
         var result = sut.{funName}({#arguments}{name}{@sep}, {/sep}{/arguments});
         
         {#return}
-            expect(result).equals({return|s});
+            sinon.assert.match(result, {return|s});
         {/return}
+
+        {#callback}
+            sinon.assert.calledWithMatch({name}, {#arguments}{.|s}{@sep}, {/sep}{/arguments});
+        {/callback}
     });
     
 })

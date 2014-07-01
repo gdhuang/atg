@@ -1,0 +1,4 @@
+tests/unit/
+demo/demo.js.inst
+node_modules/
+sublime.sublime-workspace
