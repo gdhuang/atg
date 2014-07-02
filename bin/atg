@@ -79,6 +79,8 @@ function collectFunctions(tree) {
 
 
 function instrumentHeader(tree) {
+    logger.info('instrumentHeader');
+
     var relative,
         stmt,
         newStmts = [];
@@ -105,6 +107,8 @@ function instrumentHeader(tree) {
 }
 
 function instrumentInput(funNode) {
+    logger.info('instrumentInput');
+
     var vars,
         stmt,
         newStmts = [],
@@ -149,6 +153,8 @@ function renderArguments(call) {
 }
 
 function instrumentCallback(funNode) {
+    logger.info('instrumentCallback');
+
     var callbacks,
         calls;
 
@@ -179,6 +185,8 @@ function instrumentCallback(funNode) {
 }
 
 function instrumentReturn(funNode) {
+    logger.info('instrumentReturn');
+    
     var rets;
 
     rets = visitor.collect([esprima.Syntax.ReturnStatement], funNode, {skipInnerFunction: true});

@@ -11,7 +11,7 @@
 
     "scripts": {
         "test": "mocha tests/* --reporter spec; mocha tests/unit/* --reporter spec",
-        "pretest" : "rm -rf ./tests/unit; /usr/bin/env node ./bin/atg ~/Documents/atg/; node ./demo/driver.js; /usr/bin/env node ./bin/atg -r ~/Documents/atg/"
+        "pretest" : "rm -rf ./tests/unit; /usr/bin/env node ./bin/atg .; node ./demo/driver.js; /usr/bin/env node ./bin/atg -r ."
     },
   
     "dependencies": {
