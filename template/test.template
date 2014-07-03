@@ -3,7 +3,7 @@
 var sinon = require('sinon'),
     sut = require('{filePath}');
 
-describe('{fileName}', function(){
+describe('{testFilePath}', function(){
 
     before(function () {
     });

@@ -45,19 +45,28 @@ function setup(uuid, filePath, funName) {
     };
 }
 
+function clone(o) {
+
+    if(typeof o == 'function' || typeof o == 'undefined') {
+        return o;
+    }
+    else
+        return JSON.parse(JSON.stringify(o));
+}
+
 function dIn(uuid, type, name, value) {
     if(type == 'arguments')
-        store[uuid]['input'][type].push({name: name, value: value});
+        store[uuid]['input'][type].push({name: name, value: clone(value)});
     else
-        store[uuid]['input'][type][name] = value;
+        store[uuid]['input'][type][name] = clone(value);
 }
 
 function dOut(uuid, type, name, value) {
     if(type === 'return') {
         assert.ok(!store[uuid]['output'][type].name);
-        store[uuid]['output'][type] = {name: name, value: value};
+        store[uuid]['output'][type] = {name: name, value: clone(value)};
     } else
-        store[uuid]['output'][type][name] = value;
+        store[uuid]['output'][type][name] = clone(value);
 }
 
 function dCb(uuid, fname) {
@@ -78,6 +87,7 @@ function genTest(uuid) {
         result;
         
     params = {
+        testFilePath: testFilePath,
         filePath: path.relative(path.dirname(testFilePath), sutFilePath),
         fileName: path.basename(sutFilePath),
         funName: store[uuid].funName
